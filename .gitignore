@@ -11,6 +11,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+.metadata
 
 # IntelliJ related
 *.iml
@@ -27,11 +28,13 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
 /build/
 /coverage/
+pubspec.lock
 
 # Symbolication related
 app.*.symbols
@@ -44,6 +47,17 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Node / Web build artifacts
+node_modules/
+dist/
+package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+backend/__pycache__/
+backend/*.pyc
+
 # Environment & Secrets
 .env
 *.env
@@ -53,7 +67,16 @@ backend/serviceAccountKey.json
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 
-# Temp analysis files
+# Temp / scratch files
 analyze_output.txt
 analyze_utf8.txt
 analyze_err.txt
+gods_plan_text.txt
+vitalsync_overview_text.txt
+vitalsync_text.txt
+model_info.txt
+extract_pdfs.py
+inspect_model.py
+
+# ML model binaries
+*.tflite

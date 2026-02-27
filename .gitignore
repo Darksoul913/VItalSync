@@ -47,6 +47,7 @@ app.*.map.json
 # Environment & Secrets
 .env
 *.env
+backend/.env
 lib/firebase_options.dart
 backend/serviceAccountKey.json
 android/app/google-services.json

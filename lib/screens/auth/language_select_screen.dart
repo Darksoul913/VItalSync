@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../config/constants.dart';
+import '../../providers/auth_provider.dart';
 
 class LanguageSelectScreen extends StatefulWidget {
   const LanguageSelectScreen({super.key});
@@ -100,6 +102,8 @@ class _LanguageSelectScreenState extends State<LanguageSelectScreen> {
                 height: 52,
                 child: ElevatedButton(
                   onPressed: () {
+                    // Save selected language to AuthProvider → VitalsProvider → TtsService
+                    context.read<AuthProvider>().setLanguage(_selectedLang);
                     Navigator.pushReplacementNamed(context, '/login');
                   },
                   child: const Text('Continue'),

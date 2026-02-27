@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../providers/vitals_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/tts_service.dart';
 import '../../widgets/glass_container.dart';
 
@@ -19,6 +20,18 @@ class _CheckupScreenState extends State<CheckupScreen> {
   int _countdown = 0;
   Timer? _timer;
   String _testResult = '';
+  bool _languageSynced = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Sync TTS language from provider on first build
+    if (!_languageSynced) {
+      final lang = context.read<AuthProvider>().language;
+      _tts.setLanguage(lang);
+      _languageSynced = true;
+    }
+  }
 
   @override
   void dispose() {
@@ -36,24 +49,22 @@ class _CheckupScreenState extends State<CheckupScreen> {
       _testResult = '';
     });
 
-    // Voice guidance
+    // Voice guidance (vernacular)
     switch (testId) {
       case 'orthostatic':
-        _tts.speak(
-          'Starting orthostatic test. Please lie down and remain still.',
-        );
+        _tts.speakMessage('TEST_ORTHOSTATIC');
         break;
       case 'breathing':
-        _tts.speak('Starting breathing test. Take slow, deep breaths.');
+        _tts.speakMessage('TEST_BREATHING');
         break;
       case 'stress':
-        _tts.speak('Starting stress test. Walk briskly for two minutes.');
+        _tts.speakMessage('TEST_STRESS');
         break;
       case 'ecg':
-        _tts.speak('Starting ECG recording. Please sit still.');
+        _tts.speakMessage('TEST_ECG');
         break;
       case 'sleep':
-        _tts.speak('Analyzing your overnight vitals data.');
+        _tts.speakMessage('TEST_SLEEP');
         break;
     }
 
@@ -101,7 +112,7 @@ class _CheckupScreenState extends State<CheckupScreen> {
         result = 'Test complete.';
     }
 
-    _tts.speak('Test complete. ${result.replaceAll(RegExp(r'[✅⚠️]'), '')}');
+    _tts.speakMessage('TEST_COMPLETE');
 
     setState(() {
       _activeTest = null;

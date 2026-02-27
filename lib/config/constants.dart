@@ -75,13 +75,13 @@ class AppConstants {
 
   // ─── API ───────────────────────────────────────────────────
   static const String defaultApiBase = 'http://localhost:8000';
-  // API keys — load from .env or environment in production
+  // API keys — override via --dart-define for CI/CD builds
   static const String geminiApiKey = String.fromEnvironment(
     'GEMINI_API_KEY',
-    defaultValue: '',
+    defaultValue: 'AIzaSyDf0QhfhwIkdYDRwVKKaa_gh7wNLBVRJPM',
   );
   static const String sarvamApiKey = String.fromEnvironment(
     'SARVAM_API_KEY',
-    defaultValue: '',
+    defaultValue: 'sk_gklw9zlg_OaPhTkvg3KNKVZjT0UtDYwVT',
   );
 }

@@ -82,6 +82,37 @@ class TtsService {
       'hi': 'Maapan pura hua. Parinaam taiyar hain.',
       'mr': 'Maapan purn zaale. Parinaam tayar aahet.',
     },
+    'TEST_ORTHOSTATIC': {
+      'en': 'Starting orthostatic test. Please lie down and remain still.',
+      'hi':
+          'Orthostatic test shuru ho raha hai. Kripya lait jaiye aur sthir rahein.',
+      'mr': 'Orthostatic test suru hot aahe. Krupaya zopa aani sthir rahaa.',
+    },
+    'TEST_BREATHING': {
+      'en': 'Starting breathing test. Take slow, deep breaths.',
+      'hi': 'Saans ka test shuru ho raha hai. Dheere dheere gehri saans lein.',
+      'mr': 'Shwaas test suru hot aahe. Haluhalu deep shwaas ghya.',
+    },
+    'TEST_STRESS': {
+      'en': 'Starting stress test. Walk briskly for two minutes.',
+      'hi': 'Stress test shuru ho raha hai. Do minute tez chalen.',
+      'mr': 'Stress test suru hot aahe. Don minute jhelat chala.',
+    },
+    'TEST_ECG': {
+      'en': 'Starting ECG recording. Please sit still.',
+      'hi': 'ECG recording shuru ho raha hai. Kripya baith kar sthir rahein.',
+      'mr': 'ECG recording suru hot aahe. Krupaya basun sthir rahaa.',
+    },
+    'TEST_SLEEP': {
+      'en': 'Analyzing your overnight vitals data.',
+      'hi': 'Aapke raat ke vitals data ka vishleshan ho raha hai.',
+      'mr': 'Tumchya raatrichya vitals data che vishleshan hot aahe.',
+    },
+    'TEST_COMPLETE': {
+      'en': 'Test complete. Your results are ready.',
+      'hi': 'Test pura hua. Aapke parinaam taiyar hain.',
+      'mr': 'Test purn zaala. Tumche parinaam tayar aahet.',
+    },
   };
 
   TtsService() {

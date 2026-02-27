@@ -1,0 +1,35 @@
+{
+    "rules": {
+        "patients": {
+            "$patientId": {
+                "vitals": {
+                    "live": {
+                        ".read": "auth != null && (auth.uid === $patientId || root.child('authorized_doctors/' + auth.uid + '/' + $patientId).exists() || root.child('authorized_relatives/' + auth.uid + '/' + $patientId).exists())",
+                        ".write": "auth != null && auth.uid === $patientId",
+                        ".validate": "newData.hasChildren(['hr', 'spo2'])"
+                    }
+                }
+            }
+        },
+        "authorized_doctors": {
+            "$doctorId": {
+                ".read": "auth != null && auth.uid === $doctorId",
+                ".write": false,
+                "$patientId": {
+                    ".validate": "newData.isBoolean()"
+                }
+            }
+        },
+        "authorized_relatives": {
+            "$relativeId": {
+                ".read": "auth != null && auth.uid === $relativeId",
+                ".write": false,
+                "$patientId": {
+                    ".validate": "newData.isBoolean()"
+                }
+            }
+        },
+        ".read": false,
+        ".write": false
+    }
+}

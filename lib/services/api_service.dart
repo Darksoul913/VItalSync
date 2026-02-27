@@ -273,6 +273,36 @@ class ApiService {
     }
   }
 
+  // ─── Time Series (for charts) ──────────────────────────
+  /// Get time-bucketed data points for chart plotting from MongoDB
+  Future<Map<String, dynamic>?> getTimeSeries(
+    String patientId,
+    String vitalType, {
+    int hours = 24,
+    int intervalMinutes = 5,
+  }) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http
+          .get(
+            Uri.parse(
+              '$_baseUrl/api/v1/vitals/$patientId/timeseries'
+              '?vital_type=$vitalType&hours=$hours&interval_minutes=$intervalMinutes',
+            ),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('ApiService: getTimeSeries failed: $e');
+      return null;
+    }
+  }
+
   // ─── Database Stats ────────────────────────────────────
   /// Get MongoDB stats
   Future<Map<String, dynamic>?> getDatabaseStats() async {

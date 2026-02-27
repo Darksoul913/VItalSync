@@ -257,12 +257,12 @@ async def get_vitals_history(
     }
 
 
-# ─── Analytics Endpoints ──────────────────────────────────
+# ─── Analytics Endpoints (decrypt-then-aggregate) ─────────
 @app.post("/api/v1/analytics", tags=["Analytics"])
 async def get_analytics(request: AnalyticsRequest):
     """
-    Get analytics using MongoDB aggregation pipeline.
-    Returns avg/min/max and trend for a vital type over a time period.
+    Get analytics for a vital type over a time period.
+    Decrypts vitals first, then computes avg/min/max/trend in Python.
     """
     collection = vitals_collection()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=request.period_hours)
@@ -275,43 +275,45 @@ async def get_analytics(request: AnalyticsRequest):
     }
     field = vital_map.get(request.vital_type, "heart_rate")
 
-    # MongoDB aggregation pipeline
-    pipeline = [
-        {
-            "$match": {
-                "patient_id": request.patient_id,
-                "timestamp": {"$gte": cutoff},
-            }
-        },
-        {
-            "$group": {
-                "_id": None,
-                "avg": {"$avg": f"${field}"},
-                "min": {"$min": f"${field}"},
-                "max": {"$max": f"${field}"},
-                "count": {"$sum": 1},
-                "recent_values": {"$push": f"${field}"},
-            }
-        },
-    ]
+    # Fetch raw (encrypted) documents
+    cursor = collection.find(
+        {"patient_id": request.patient_id, "timestamp": {"$gte": cutoff}},
+        projection={"_id": 0},
+        sort=[("timestamp", 1)],
+    )
+    raw_docs = await cursor.to_list(length=5000)
 
-    results = await collection.aggregate(pipeline).to_list(length=1)
-
-    if not results:
+    if not raw_docs:
         return {
             "patient_id": request.patient_id,
             "vital_type": request.vital_type,
-            "avg": 0,
-            "min": 0,
-            "max": 0,
-            "count": 0,
-            "trend": "no_data",
+            "avg": 0, "min": 0, "max": 0,
+            "count": 0, "trend": "no_data",
         }
 
-    result = results[0]
+    # Decrypt all documents
+    decrypted = decrypt_vitals_list(raw_docs)
 
-    # Trend detection from recent values
-    values = result.get("recent_values", [])
+    # Extract values for the requested vital
+    values = []
+    for doc in decrypted:
+        val = doc.get(field)
+        if val is not None and isinstance(val, (int, float)):
+            values.append(float(val))
+
+    if not values:
+        return {
+            "patient_id": request.patient_id,
+            "vital_type": request.vital_type,
+            "avg": 0, "min": 0, "max": 0,
+            "count": 0, "trend": "no_data",
+        }
+
+    avg_val = sum(values) / len(values)
+    min_val = min(values)
+    max_val = max(values)
+
+    # Trend detection
     if len(values) >= 10:
         recent = values[-5:]
         older = values[-10:-5]
@@ -329,10 +331,10 @@ async def get_analytics(request: AnalyticsRequest):
     return {
         "patient_id": request.patient_id,
         "vital_type": request.vital_type,
-        "avg": round(result["avg"], 2),
-        "min": round(result["min"], 2),
-        "max": round(result["max"], 2),
-        "count": result["count"],
+        "avg": round(avg_val, 2),
+        "min": round(min_val, 2),
+        "max": round(max_val, 2),
+        "count": len(values),
         "trend": trend,
     }
 
@@ -344,7 +346,7 @@ async def get_daily_summary(
 ):
     """
     Get or generate a daily summary for a patient.
-    Checks cache first, generates from raw data if needed.
+    Checks cache first, generates from decrypted raw data if needed.
     """
     target_date = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     summaries = daily_summaries_collection()
@@ -359,40 +361,19 @@ async def get_daily_summary(
             cached["generated_at"] = cached["generated_at"].isoformat()
         return cached
 
-    # Generate from raw vitals
+    # Fetch and decrypt raw vitals for the day
     dt = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     start = dt
     end = dt + timedelta(days=1)
 
     collection = vitals_collection()
-    pipeline = [
-        {
-            "$match": {
-                "patient_id": patient_id,
-                "timestamp": {"$gte": start, "$lt": end},
-            }
-        },
-        {
-            "$group": {
-                "_id": None,
-                "count": {"$sum": 1},
-                "hr_avg": {"$avg": "$heart_rate"},
-                "hr_min": {"$min": "$heart_rate"},
-                "hr_max": {"$max": "$heart_rate"},
-                "spo2_avg": {"$avg": "$spo2"},
-                "spo2_min": {"$min": "$spo2"},
-                "temp_avg": {"$avg": "$temperature"},
-                "temp_min": {"$min": "$temperature"},
-                "temp_max": {"$max": "$temperature"},
-                "sys_avg": {"$avg": "$bp_systolic"},
-                "dia_avg": {"$avg": "$bp_diastolic"},
-            }
-        },
-    ]
+    cursor = collection.find(
+        {"patient_id": patient_id, "timestamp": {"$gte": start, "$lt": end}},
+        projection={"_id": 0},
+    )
+    raw_docs = await cursor.to_list(length=10000)
 
-    results = await collection.aggregate(pipeline).to_list(length=1)
-
-    if not results:
+    if not raw_docs:
         return {
             "patient_id": patient_id,
             "date": target_date,
@@ -400,28 +381,38 @@ async def get_daily_summary(
             "message": "No data for this date",
         }
 
-    r = results[0]
+    # Decrypt all
+    decrypted = decrypt_vitals_list(raw_docs)
+
+    # Compute stats from decrypted values
+    hr_vals = [d["heart_rate"] for d in decrypted if d.get("heart_rate") is not None]
+    spo2_vals = [d["spo2"] for d in decrypted if d.get("spo2") is not None]
+    temp_vals = [d["temperature"] for d in decrypted if d.get("temperature") is not None]
+    sys_vals = [d["bp_systolic"] for d in decrypted if d.get("bp_systolic") is not None]
+    dia_vals = [d["bp_diastolic"] for d in decrypted if d.get("bp_diastolic") is not None]
+
+    def _stats(vals):
+        if not vals:
+            return {"avg": 0, "min": 0, "max": 0}
+        return {
+            "avg": round(sum(vals) / len(vals), 1),
+            "min": round(min(vals), 1),
+            "max": round(max(vals), 1),
+        }
+
     summary = {
         "patient_id": patient_id,
         "date": target_date,
-        "reading_count": r["count"],
-        "heart_rate": {
-            "avg": round(r["hr_avg"], 1),
-            "min": round(r["hr_min"], 1),
-            "max": round(r["hr_max"], 1),
-        },
+        "reading_count": len(decrypted),
+        "heart_rate": _stats(hr_vals),
         "spo2": {
-            "avg": round(r["spo2_avg"], 1),
-            "min": round(r["spo2_min"], 1),
+            "avg": round(sum(spo2_vals) / len(spo2_vals), 1) if spo2_vals else 0,
+            "min": round(min(spo2_vals), 1) if spo2_vals else 0,
         },
-        "temperature": {
-            "avg": round(r["temp_avg"], 1),
-            "min": round(r["temp_min"], 1),
-            "max": round(r["temp_max"], 1),
-        },
+        "temperature": _stats(temp_vals),
         "bp": {
-            "systolic_avg": round(r["sys_avg"], 1),
-            "diastolic_avg": round(r["dia_avg"], 1),
+            "systolic_avg": round(sum(sys_vals) / len(sys_vals), 1) if sys_vals else 0,
+            "diastolic_avg": round(sum(dia_vals) / len(dia_vals), 1) if dia_vals else 0,
         },
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -434,6 +425,80 @@ async def get_daily_summary(
     )
 
     return summary
+
+
+@app.get("/api/v1/vitals/{patient_id}/timeseries", tags=["Analytics"])
+async def get_vitals_timeseries(
+    patient_id: str,
+    vital_type: str = Query("heart_rate", description="heart_rate|spo2|temperature|bp_systolic|bp_diastolic"),
+    hours: int = Query(24, ge=1, le=720),
+    interval_minutes: int = Query(5, ge=1, le=60, description="Group readings into N-minute buckets"),
+):
+    """
+    Get time-series data points for chart plotting.
+    Returns decrypted vitals grouped into time buckets with avg values.
+    """
+    collection = vitals_collection()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    cursor = collection.find(
+        {"patient_id": patient_id, "timestamp": {"$gte": cutoff}},
+        projection={"_id": 0},
+        sort=[("timestamp", 1)],
+    )
+    raw_docs = await cursor.to_list(length=10000)
+
+    if not raw_docs:
+        return {
+            "patient_id": patient_id,
+            "vital_type": vital_type,
+            "hours": hours,
+            "data_points": [],
+        }
+
+    # Decrypt all
+    decrypted = decrypt_vitals_list(raw_docs)
+
+    # Group into time buckets
+    buckets = {}
+    for doc in decrypted:
+        val = doc.get(vital_type)
+        ts = doc.get("timestamp")
+        if val is None or ts is None:
+            continue
+
+        # Parse timestamp if string
+        if isinstance(ts, str):
+            ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+        # Round to bucket
+        bucket_key = ts.replace(
+            minute=(ts.minute // interval_minutes) * interval_minutes,
+            second=0, microsecond=0
+        )
+        bucket_str = bucket_key.isoformat()
+
+        if bucket_str not in buckets:
+            buckets[bucket_str] = []
+        buckets[bucket_str].append(float(val))
+
+    # Build data points (avg per bucket)
+    data_points = []
+    for ts_str in sorted(buckets.keys()):
+        vals = buckets[ts_str]
+        data_points.append({
+            "timestamp": ts_str,
+            "value": round(sum(vals) / len(vals), 2),
+            "count": len(vals),
+        })
+
+    return {
+        "patient_id": patient_id,
+        "vital_type": vital_type,
+        "hours": hours,
+        "interval_minutes": interval_minutes,
+        "data_points": data_points,
+    }
 
 
 # ─── Alert Endpoints ──────────────────────────────────────

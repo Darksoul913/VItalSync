@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../config/theme.dart';
 import '../../providers/vitals_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/api_service.dart';
 import '../../widgets/glass_container.dart';
 
 class VitalsDetailScreen extends StatefulWidget {
@@ -13,8 +15,14 @@ class VitalsDetailScreen extends StatefulWidget {
 }
 
 class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
+  final ApiService _api = ApiService();
   String _selectedVital = 'Heart Rate';
   String _selectedPeriod = 'Today';
+
+  // MongoDB data
+  List<Map<String, dynamic>> _timeSeriesData = [];
+  Map<String, dynamic>? _analytics;
+  bool _isLoading = false;
 
   final Map<String, Color> _vitalColors = {
     'Heart Rate': AppTheme.heartRateColor,
@@ -30,28 +38,100 @@ class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
     'Blood Pressure': 'mmHg',
   };
 
+  final Map<String, String> _vitalApiNames = {
+    'Heart Rate': 'heart_rate',
+    'SpO2': 'spo2',
+    'Temperature': 'temperature',
+    'Blood Pressure': 'bp_systolic',
+  };
+
+  int get _periodHours {
+    switch (_selectedPeriod) {
+      case 'Week':
+        return 168;
+      case 'Month':
+        return 720;
+      default:
+        return 24;
+    }
+  }
+
+  int get _intervalMinutes {
+    switch (_selectedPeriod) {
+      case 'Week':
+        return 60;
+      case 'Month':
+        return 360;
+      default:
+        return 5;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchData());
+  }
+
+  Future<void> _fetchData() async {
+    setState(() => _isLoading = true);
+
+    final auth = context.read<AuthProvider>();
+    final patientId = auth.firebaseUser?.uid ?? 'demo-user';
+    final vitalType = _vitalApiNames[_selectedVital] ?? 'heart_rate';
+
+    // Fetch timeseries + analytics in parallel
+    final results = await Future.wait([
+      _api.getTimeSeries(
+        patientId,
+        vitalType,
+        hours: _periodHours,
+        intervalMinutes: _intervalMinutes,
+      ),
+      _api.getAnalytics(patientId, vitalType, periodHours: _periodHours),
+    ]);
+
+    if (mounted) {
+      setState(() {
+        final tsResult = results[0];
+        _timeSeriesData =
+            (tsResult?['data_points'] as List<dynamic>?)
+                ?.cast<Map<String, dynamic>>() ??
+            [];
+        _analytics = results[1];
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<VitalsProvider>(
       builder: (context, vitals, _) {
-        final stats = vitals.getVitalStats(_selectedVital);
         return Scaffold(
-          appBar: AppBar(title: const Text('Vitals History')),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppTheme.spacingMd),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildVitalSelector(),
-                const SizedBox(height: 16),
-                _buildPeriodSelector(),
-                const SizedBox(height: 20),
-                _buildChart(vitals),
-                const SizedBox(height: 20),
-                _buildStatsSummary(stats),
-                const SizedBox(height: 20),
-                _buildReadingHistory(vitals),
-              ],
+          appBar: AppBar(title: const Text('Vitals Analytics')),
+          body: RefreshIndicator(
+            onRefresh: _fetchData,
+            color: AppTheme.primary,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildVitalSelector(),
+                  const SizedBox(height: 16),
+                  _buildPeriodSelector(),
+                  const SizedBox(height: 20),
+                  _buildChart(),
+                  const SizedBox(height: 20),
+                  _buildStatsSummary(),
+                  const SizedBox(height: 20),
+                  _buildTrendBadge(),
+                  const SizedBox(height: 20),
+                  _buildReadingCount(),
+                ],
+              ),
             ),
           ),
         );
@@ -66,7 +146,10 @@ class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
         children: _vitalColors.entries.map((e) {
           final selected = _selectedVital == e.key;
           return GestureDetector(
-            onTap: () => setState(() => _selectedVital = e.key),
+            onTap: () {
+              setState(() => _selectedVital = e.key);
+              _fetchData();
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               margin: const EdgeInsets.only(right: 10),
@@ -102,7 +185,10 @@ class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
         final selected = _selectedPeriod == period;
         return Expanded(
           child: GestureDetector(
-            onTap: () => setState(() => _selectedPeriod = period),
+            onTap: () {
+              setState(() => _selectedPeriod = period);
+              _fetchData();
+            },
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 4),
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -126,54 +212,104 @@ class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
     );
   }
 
-  Widget _buildChart(VitalsProvider vitals) {
+  Widget _buildChart() {
     final color = _vitalColors[_selectedVital]!;
-    final history = vitals.history;
 
-    // Build chart spots from live history
+    if (_isLoading) {
+      return GlassContainer(
+        padding: const EdgeInsets.all(16),
+        child: SizedBox(
+          height: 220,
+          child: Center(
+            child: CircularProgressIndicator(color: color, strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    // Build chart spots from MongoDB time-series data
     final spots = <FlSpot>[];
-    final count = history.length.clamp(0, 10);
-    for (int i = 0; i < count; i++) {
-      final r = history[count - 1 - i];
-      double val;
-      switch (_selectedVital) {
-        case 'SpO2':
-          val = r.spo2;
-          break;
-        case 'Temperature':
-          val = r.temperature;
-          break;
-        case 'Blood Pressure':
-          val = r.bpSystolic;
-          break;
-        default:
-          val = r.heartRate;
-      }
+    for (int i = 0; i < _timeSeriesData.length; i++) {
+      final dp = _timeSeriesData[i];
+      final val = (dp['value'] as num?)?.toDouble() ?? 0;
       spots.add(FlSpot(i.toDouble(), val));
     }
 
     if (spots.isEmpty) {
-      spots.add(const FlSpot(0, 72));
+      return GlassContainer(
+        padding: const EdgeInsets.all(16),
+        child: SizedBox(
+          height: 220,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.show_chart,
+                  color: color.withValues(alpha: 0.3),
+                  size: 48,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'No data for this period',
+                  style: TextStyle(color: AppTheme.textHint, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Vitals data will appear here once recorded',
+                  style: TextStyle(
+                    color: AppTheme.textHint.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
-    // Dynamic min/max for Y axis
+    // Dynamic Y-axis range
     double minY, maxY;
+    final allValues = spots.map((s) => s.y).toList();
+    final dataMin = allValues.reduce((a, b) => a < b ? a : b);
+    final dataMax = allValues.reduce((a, b) => a > b ? a : b);
+    final padding = (dataMax - dataMin) * 0.15;
+    minY = (dataMin - padding).floorToDouble();
+    maxY = (dataMax + padding).ceilToDouble();
+
+    // Fallback ranges for specific vitals
     switch (_selectedVital) {
       case 'SpO2':
-        minY = 88;
-        maxY = 102;
+        minY = minY.clamp(85, 95);
+        maxY = maxY.clamp(98, 105);
         break;
       case 'Temperature':
-        minY = 35;
-        maxY = 39;
-        break;
-      case 'Blood Pressure':
-        minY = 80;
-        maxY = 160;
+        minY = minY.clamp(34, 36);
+        maxY = maxY.clamp(38, 42);
         break;
       default:
-        minY = 50;
-        maxY = 120;
+        break;
+    }
+
+    // Time labels
+    String getTimeLabel(int index) {
+      if (index < 0 || index >= _timeSeriesData.length) return '';
+      final ts = _timeSeriesData[index]['timestamp'] as String?;
+      if (ts == null) return '';
+      try {
+        final dt = DateTime.parse(ts);
+        if (_selectedPeriod == 'Today') {
+          return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        } else if (_selectedPeriod == 'Week') {
+          const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+          return days[dt.weekday - 1];
+        } else {
+          return '${dt.day}/${dt.month}';
+        }
+      } catch (_) {
+        return '';
+      }
     }
 
     return GlassContainer(
@@ -197,8 +333,25 @@ class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
               ),
-              bottomTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 24,
+                  interval: (spots.length / 5).ceilToDouble().clamp(1, 100),
+                  getTitlesWidget: (value, meta) {
+                    final label = getTimeLabel(value.toInt());
+                    return SideTitleWidget(
+                      meta: meta,
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          color: AppTheme.textHint,
+                          fontSize: 9,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
               leftTitles: AxisTitles(
                 sideTitles: SideTitles(
@@ -222,7 +375,7 @@ class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
                 color: color,
                 barWidth: 2.5,
                 dotData: FlDotData(
-                  show: true,
+                  show: spots.length <= 30,
                   getDotPainter: (spot, percent, barData, index) =>
                       FlDotCirclePainter(
                         radius: 3,
@@ -243,6 +396,24 @@ class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
                 ),
               ),
             ],
+            lineTouchData: LineTouchData(
+              touchTooltipData: LineTouchTooltipData(
+                getTooltipItems: (touchedSpots) {
+                  return touchedSpots.map((spot) {
+                    final label = getTimeLabel(spot.spotIndex);
+                    final isTemp = _selectedVital == 'Temperature';
+                    return LineTooltipItem(
+                      '$label\n${isTemp ? spot.y.toStringAsFixed(1) : spot.y.toStringAsFixed(0)} ${_vitalUnits[_selectedVital]}',
+                      TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    );
+                  }).toList();
+                },
+              ),
+            ),
             minY: minY,
             maxY: maxY,
           ),
@@ -251,36 +422,56 @@ class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
     );
   }
 
-  Widget _buildStatsSummary(Map<String, double> stats) {
+  Widget _buildStatsSummary() {
     final color = _vitalColors[_selectedVital]!;
     final unit = _vitalUnits[_selectedVital]!;
     final isTemp = _selectedVital == 'Temperature';
+
+    final avg = (_analytics?['avg'] as num?)?.toDouble() ?? 0;
+    final min = (_analytics?['min'] as num?)?.toDouble() ?? 0;
+    final max = (_analytics?['max'] as num?)?.toDouble() ?? 0;
+
+    if (_isLoading) {
+      return Row(
+        children: List.generate(
+          3,
+          (_) => Expanded(
+            child: GlassContainer(
+              padding: const EdgeInsets.all(14),
+              child: SizedBox(
+                height: 60,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: color,
+                    strokeWidth: 1.5,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Row(
       children: [
         _buildStatItem(
           'Average',
-          isTemp
-              ? stats['avg']!.toStringAsFixed(1)
-              : stats['avg']!.toStringAsFixed(0),
+          isTemp ? avg.toStringAsFixed(1) : avg.toStringAsFixed(0),
           unit,
           color,
         ),
         const SizedBox(width: 12),
         _buildStatItem(
           'Min',
-          isTemp
-              ? stats['min']!.toStringAsFixed(1)
-              : stats['min']!.toStringAsFixed(0),
+          isTemp ? min.toStringAsFixed(1) : min.toStringAsFixed(0),
           unit,
           AppTheme.info,
         ),
         const SizedBox(width: 12),
         _buildStatItem(
           'Max',
-          isTemp
-              ? stats['max']!.toStringAsFixed(1)
-              : stats['max']!.toStringAsFixed(0),
+          isTemp ? max.toStringAsFixed(1) : max.toStringAsFixed(0),
           unit,
           AppTheme.warning,
         ),
@@ -323,98 +514,111 @@ class _VitalsDetailScreenState extends State<VitalsDetailScreen> {
     );
   }
 
-  Widget _buildReadingHistory(VitalsProvider vitals) {
-    final history = vitals.history.take(8).toList();
+  Widget _buildTrendBadge() {
+    final trend = _analytics?['trend'] ?? 'no_data';
+    final count = (_analytics?['count'] as num?)?.toInt() ?? 0;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Recent Readings',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (history.isEmpty)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Text(
-                'Waiting for data...',
-                style: TextStyle(color: AppTheme.textHint),
-              ),
+    IconData icon;
+    Color color;
+    String label;
+
+    switch (trend) {
+      case 'rising':
+        icon = Icons.trending_up;
+        color = AppTheme.warning;
+        label = 'Rising Trend';
+        break;
+      case 'falling':
+        icon = Icons.trending_down;
+        color = AppTheme.info;
+        label = 'Falling Trend';
+        break;
+      case 'stable':
+        icon = Icons.trending_flat;
+        color = AppTheme.success;
+        label = 'Stable';
+        break;
+      default:
+        icon = Icons.show_chart;
+        color = AppTheme.textHint;
+        label = count == 0 ? 'No Data' : 'Analyzing...';
+    }
+
+    return GlassContainer(
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
             ),
-          )
-        else
-          ...history.map((r) {
-            String value;
-            IconData icon;
-            Color color;
-
-            switch (_selectedVital) {
-              case 'SpO2':
-                value = '${r.spo2.toStringAsFixed(0)}%';
-                icon = Icons.water_drop;
-                color = AppTheme.spo2Color;
-                break;
-              case 'Temperature':
-                value = '${r.temperature.toStringAsFixed(1)}°C';
-                icon = Icons.thermostat;
-                color = AppTheme.temperatureColor;
-                break;
-              case 'Blood Pressure':
-                value =
-                    '${r.bpSystolic.toStringAsFixed(0)}/${r.bpDiastolic.toStringAsFixed(0)} mmHg';
-                icon = Icons.speed;
-                color = AppTheme.bpColor;
-                break;
-              default:
-                value = '${r.heartRate.toStringAsFixed(0)} BPM';
-                icon = Icons.favorite;
-                color = AppTheme.heartRateColor;
-            }
-
-            final elapsed = DateTime.now().difference(r.timestamp);
-            final timeStr = elapsed.inSeconds < 10
-                ? 'Just now'
-                : elapsed.inMinutes < 1
-                ? '${elapsed.inSeconds}s ago'
-                : '${elapsed.inMinutes}m ago';
-
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppTheme.card,
-                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              child: Row(
-                children: [
-                  Icon(icon, color: color, size: 18),
-                  const SizedBox(width: 12),
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    timeStr,
-                    style: const TextStyle(
-                      color: AppTheme.textHint,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+              Text(
+                'Based on $count readings over $_selectedPeriod',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
+                ),
               ),
-            );
-          }),
-      ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadingCount() {
+    final count = (_analytics?['count'] as num?)?.toInt() ?? 0;
+    final dataPoints = _timeSeriesData.length;
+
+    return GlassContainer(
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.storage, color: AppTheme.primary, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$count total readings',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                '$dataPoints data points on chart • Source: MongoDB',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

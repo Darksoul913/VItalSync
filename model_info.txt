@@ -1,0 +1,5 @@
+--- INPUT DETAILS ---
+Name: serving_default_keras_tensor:0, Shape: [  1 375   1], Type: <class 'numpy.float32'>
+
+--- OUTPUT DETAILS ---
+Name: StatefulPartitionedCall_1:0, Shape: [1 4], Type: <class 'numpy.float32'>

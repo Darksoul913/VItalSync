@@ -131,17 +131,9 @@ class EcgScreen extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      SizedBox(
+                      EcgWaveform(
+                        samples: ecg,
                         height: 200,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(
-                            AppTheme.radiusMd,
-                          ),
-                          child: CustomPaint(
-                            painter: EcgPainter(samples: ecg),
-                            size: Size.infinite,
-                          ),
-                        ),
                       ),
                     ],
                   ),

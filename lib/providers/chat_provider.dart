@@ -145,7 +145,7 @@ $_dailySummary
 ''';
 
     final body = jsonEncode({
-      "model": "qwen/qwen3.5-397b-a17b",
+      "model": "meta/llama-3.1-8b-instruct",
       "messages": [
         {"role": "system", "content": systemPrompt},
         {"role": "user", "content": userMessage},
@@ -163,12 +163,12 @@ $_dailySummary
             headers: {
               'Content-Type': 'application/json',
               'Authorization':
-                  'Bearer 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',
+                  'Bearer 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',
               'Accept': 'application/json',
             },
             body: body,
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 45)); // Increased from 20s to 45s for slow model inference
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

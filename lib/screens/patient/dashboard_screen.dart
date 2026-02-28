@@ -699,15 +699,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          SizedBox(
+          EcgWaveform(
+            samples: ecg,
             height: 120,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-              child: CustomPaint(
-                painter: EcgPainter(samples: ecg),
-                size: Size.infinite,
-              ),
-            ),
           ),
         ],
       ),

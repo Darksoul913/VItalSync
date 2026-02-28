@@ -3,6 +3,11 @@ VitalSync — MongoDB Connection Manager
 ───────────────────────────────────────
 Async MongoDB connection using Motor (async driver).
 Provides the database instance and collection helpers.
+
+TTL (rolling deletion) policy:
+  vitals_history  → 30 days  (auto-purge old sensor readings)
+  alerts_log      → 7 days   (auto-purge old alerts)
+  daily_summaries → 90 days  (keep summaries longer)
 """
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -12,6 +17,11 @@ load_dotenv()
 
 MONGODB_URI = os.getenv("MONGODB_URI", "")
 MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "vitalsync")
+
+# ─── TTL Settings ─────────────────────────────────────────
+TTL_VITALS_DAYS    = int(os.getenv("TTL_VITALS_DAYS", "30"))
+TTL_ALERTS_DAYS    = int(os.getenv("TTL_ALERTS_DAYS", "7"))
+TTL_SUMMARIES_DAYS = int(os.getenv("TTL_SUMMARIES_DAYS", "90"))
 
 # ─── Singleton client ─────────────────────────────────────
 _client: AsyncIOMotorClient | None = None
@@ -65,7 +75,6 @@ def audit_log_collection():
 async def connect_db():
     """Verify MongoDB connectivity on startup."""
     client = get_client()
-    # Ping to verify the connection works
     await client.admin.command("ping")
     print(f"✅ Connected to MongoDB Atlas — database: {MONGODB_DB_NAME}")
 
@@ -82,13 +91,12 @@ async def close_db():
 async def init_collections():
     """
     Create collections with proper schemas on first run.
-    Time-series collection for vitals_history gives 
-    optimized storage and aggregation for time-based queries.
+    TTL indexes ensure automatic rolling deletion — DB never fills up.
     """
     db = get_db()
     existing = await db.list_collection_names()
 
-    # ── vitals_history (time-series) ──
+    # ── vitals_history (time-series with TTL) ──
     if "vitals_history" not in existing:
         await db.create_collection(
             "vitals_history",
@@ -97,8 +105,18 @@ async def init_collections():
                 "metaField": "patient_id",
                 "granularity": "seconds",
             },
+            expireAfterSeconds=TTL_VITALS_DAYS * 86400,
         )
-        print("📊 Created time-series collection: vitals_history")
+        print(f"📊 Created vitals_history (TTL {TTL_VITALS_DAYS}d)")
+    else:
+        # Update TTL on existing time-series collection
+        try:
+            await db.command({
+                "collMod": "vitals_history",
+                "expireAfterSeconds": TTL_VITALS_DAYS * 86400,
+            })
+        except Exception:
+            pass  # Non-fatal — may already be set
 
     # ── Indexes ──
     vitals = vitals_collection()
@@ -107,6 +125,12 @@ async def init_collections():
     alerts = alerts_collection()
     await alerts.create_index([("patient_id", 1), ("timestamp", -1)])
     await alerts.create_index("alert_id", unique=True, sparse=True)
+    # Rolling delete: alerts older than TTL_ALERTS_DAYS
+    await alerts.create_index(
+        "timestamp",
+        expireAfterSeconds=TTL_ALERTS_DAYS * 86400,
+        name="alerts_ttl",
+    )
 
     patients = patients_collection()
     await patients.create_index("patient_id", unique=True)
@@ -115,5 +139,14 @@ async def init_collections():
     await summaries.create_index(
         [("patient_id", 1), ("date", 1)], unique=True
     )
+    # Rolling delete: summaries older than TTL_SUMMARIES_DAYS
+    await summaries.create_index(
+        "generated_at",
+        expireAfterSeconds=TTL_SUMMARIES_DAYS * 86400,
+        name="summaries_ttl",
+    )
 
-    print("🗂️  MongoDB indexes ensured")
+    print(
+        f"🗂️  MongoDB TTL indexes ensured "
+        f"(vitals: {TTL_VITALS_DAYS}d | alerts: {TTL_ALERTS_DAYS}d | summaries: {TTL_SUMMARIES_DAYS}d)"
+    )

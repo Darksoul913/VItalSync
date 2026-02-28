@@ -10,6 +10,7 @@ import '../screens/patient/alerts_screen.dart';
 import '../screens/patient/profile_screen.dart';
 import '../screens/patient/patient_shell.dart';
 import '../screens/patient/emergency_contacts_screen.dart';
+import '../screens/patient/device_pairing_screen.dart';
 
 class AppRoutes {
   AppRoutes._();
@@ -27,6 +28,7 @@ class AppRoutes {
   static const String alerts = '/alerts';
   static const String profile = '/profile';
   static const String emergencyContacts = '/emergency-contacts';
+  static const String devices = '/devices';
 
   static Map<String, WidgetBuilder> get routes => {
     login: (context) => const LoginScreen(),
@@ -40,5 +42,6 @@ class AppRoutes {
     alerts: (context) => const AlertsScreen(),
     profile: (context) => const ProfileScreen(),
     emergencyContacts: (context) => const EmergencyContactsScreen(),
+    devices: (context) => const DevicePairingScreen(),
   };
 }

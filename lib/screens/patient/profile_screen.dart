@@ -94,6 +94,14 @@ class ProfileScreen extends StatelessWidget {
                   AppTheme.success,
                   auth,
                 ),
+                _buildSettingsItem(
+                  context,
+                  Icons.sensors_rounded,
+                  'My Devices',
+                  '',
+                  AppTheme.info,
+                  auth,
+                ),
                 const SizedBox(height: 20),
 
                 // Vitals Summary
@@ -342,6 +350,8 @@ class ProfileScreen extends StatelessWidget {
           _showLanguageDialog(context, auth);
         } else if (title == 'Emergency Contacts') {
           Navigator.pushNamed(context, '/emergency-contacts');
+        } else if (title == 'My Devices') {
+          Navigator.pushNamed(context, '/devices');
         }
       },
       child: Container(

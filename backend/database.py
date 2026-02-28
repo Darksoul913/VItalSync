@@ -61,6 +61,11 @@ def audit_log_collection():
     return get_db()["audit_log"]
 
 
+def devices_collection():
+    """Paired ESP8266 devices."""
+    return get_db()["devices"]
+
+
 # ─── Lifecycle hooks ───────────────────────────────────────
 async def connect_db():
     """Verify MongoDB connectivity on startup."""
@@ -115,5 +120,9 @@ async def init_collections():
     await summaries.create_index(
         [("patient_id", 1), ("date", 1)], unique=True
     )
+
+    devices = devices_collection()
+    await devices.create_index("device_token", unique=True)
+    await devices.create_index("patient_id")
 
     print("🗂️  MongoDB indexes ensured")

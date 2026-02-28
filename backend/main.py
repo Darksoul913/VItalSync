@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -31,6 +31,7 @@ from database import (
     alerts_collection,
     patients_collection,
     daily_summaries_collection,
+    devices_collection,
 )
 
 # ─── Encryption ────────────────────────────────────────────
@@ -112,6 +113,16 @@ class AnalyticsRequest(BaseModel):
     period_hours: int = 24
 
 
+class DevicePairRequest(BaseModel):
+    patient_id: str
+    device_name: str = "VitalSync Band"
+
+
+class DeviceActivateRequest(BaseModel):
+    device_token: str
+    patient_id: str
+
+
 # ─── Alert Thresholds ─────────────────────────────────────
 THRESHOLDS = {
     "hr_high": 100.0,
@@ -150,11 +161,27 @@ async def health_check():
 
 # ─── Sensor Data Endpoints ────────────────────────────────
 @app.post("/api/v1/vitals", tags=["Sensor Data"])
-async def receive_vital_reading(reading: VitalReading):
+async def receive_vital_reading(
+    reading: VitalReading,
+    x_device_token: Optional[str] = Header(None),
+):
     """
-    Receive a vital reading from ESP32 or simulator.
+    Receive a vital reading from ESP32/ESP8266 or simulator.
     Stores to MongoDB (history) and checks alert thresholds.
+    Optionally validates device token if provided.
     """
+    # Validate device token if provided
+    if x_device_token:
+        devices = devices_collection()
+        device = await devices.find_one({"device_token": x_device_token})
+        if not device:
+            raise HTTPException(status_code=401, detail="Invalid device token")
+        if device.get("status") != "active":
+            raise HTTPException(status_code=403, detail="Device not activated")
+        # Ensure the device belongs to this patient
+        if device.get("patient_id") != reading.patient_id:
+            raise HTTPException(status_code=403, detail="Device not paired to this patient")
+
     if not reading.timestamp:
         reading.timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -600,6 +627,99 @@ async def get_database_stats():
         "patients_count": await pts.count_documents({}),
         "database": "MongoDB Atlas",
     }
+
+
+# ─── Device Pairing Endpoints ─────────────────────────────
+@app.post("/api/v1/devices/pair", tags=["Devices"])
+async def pair_device(request: DevicePairRequest):
+    """
+    Generate a device token and register a new device for a patient.
+    Called by the Flutter app when user initiates pairing.
+    """
+    device_token = f"vsd-{uuid.uuid4().hex}"
+
+    device_doc = {
+        "device_token": device_token,
+        "patient_id": request.patient_id,
+        "device_name": request.device_name,
+        "status": "pending",  # pending → active after ESP confirms
+        "paired_at": datetime.now(timezone.utc),
+        "activated_at": None,
+        "last_seen": None,
+    }
+
+    devices = devices_collection()
+    await devices.insert_one(device_doc)
+
+    return {
+        "status": "paired",
+        "device_token": device_token,
+        "patient_id": request.patient_id,
+        "device_name": request.device_name,
+    }
+
+
+@app.post("/api/v1/devices/activate", tags=["Devices"])
+async def activate_device(request: DeviceActivateRequest):
+    """
+    Called by ESP8266 after it reboots with saved config.
+    Marks the device as active in MongoDB.
+    """
+    devices = devices_collection()
+    device = await devices.find_one({"device_token": request.device_token})
+
+    if not device:
+        raise HTTPException(status_code=404, detail="Device token not found")
+
+    if device.get("patient_id") != request.patient_id:
+        raise HTTPException(status_code=403, detail="Token does not match patient")
+
+    await devices.update_one(
+        {"device_token": request.device_token},
+        {"$set": {
+            "status": "active",
+            "activated_at": datetime.now(timezone.utc),
+            "last_seen": datetime.now(timezone.utc),
+        }},
+    )
+
+    return {
+        "status": "synced",
+        "device_token": request.device_token,
+        "patient_id": request.patient_id,
+    }
+
+
+@app.get("/api/v1/devices/{patient_id}", tags=["Devices"])
+async def get_patient_devices(patient_id: str):
+    """Get all paired devices for a patient."""
+    devices = devices_collection()
+    cursor = devices.find(
+        {"patient_id": patient_id},
+        projection={"_id": 0},
+    )
+    device_list = await cursor.to_list(length=20)
+
+    for d in device_list:
+        for field in ("paired_at", "activated_at", "last_seen"):
+            if isinstance(d.get(field), datetime):
+                d[field] = d[field].isoformat()
+
+    return {
+        "patient_id": patient_id,
+        "count": len(device_list),
+        "devices": device_list,
+    }
+
+
+@app.delete("/api/v1/devices/{device_token}", tags=["Devices"])
+async def unpair_device(device_token: str):
+    """Unpair and remove a device."""
+    devices = devices_collection()
+    result = await devices.delete_one({"device_token": device_token})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return {"status": "unpaired", "device_token": device_token}
 
 
 # ─── Helper Functions ─────────────────────────────────────

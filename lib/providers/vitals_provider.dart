@@ -213,7 +213,7 @@ class VitalsProvider extends ChangeNotifier {
                 _isLive = true;
                 _simulationTimer?.cancel();
                 _simulationTimer = null;
-                debugPrint('📡 Switched to LIVE data from RTDB');
+                debugPrint('📡 Switched to LIVE data from MongoDB');
               }
 
               _processLiveReading(reading);
@@ -361,9 +361,8 @@ class VitalsProvider extends ChangeNotifier {
     );
 
     notifyListeners();
-
-    // Save to Firestore history (throttled to every 30s internally)
-    _historyService.saveReading(_patientId, _currentReading);
+    // Note: historical storage is handled automatically by FastAPI
+    // when the ESP8266 POSTs to /api/v1/vitals — no duplicate save needed here.
   }
 
   // ─── Utility Methods ─────────────────────────────────────

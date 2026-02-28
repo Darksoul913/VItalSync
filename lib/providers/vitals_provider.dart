@@ -182,7 +182,7 @@ class VitalsProvider extends ChangeNotifier {
   bool _isLive = false;
   String _patientId = 'demo-user';
 
-  static const int _staleThresholdSecs = 15; // Switch to sim if no data for 15s
+  static const int _staleThresholdSecs = 6; // Switch to sim if no data for 6s
   static const int _simIntervalMs = 2000; // Simulation tick every 2s
 
   bool get isLive => _isLive;
@@ -227,7 +227,7 @@ class VitalsProvider extends ChangeNotifier {
     // 2. Start staleness checker — checks every 5s if RTDB data is fresh
     _stalenessTimer?.cancel();
     _stalenessTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(seconds: 4),
       (_) => _checkStaleness(),
     );
 

@@ -163,7 +163,7 @@ $_dailySummary
             headers: {
               'Content-Type': 'application/json',
               'Authorization':
-                  'Bearer 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',
+                  'Bearer ---',
               'Accept': 'application/json',
             },
             body: body,

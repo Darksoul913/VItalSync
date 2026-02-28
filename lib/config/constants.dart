@@ -74,7 +74,7 @@ class AppConstants {
   static const String liveVitalsPath = 'vitals';
 
   // ─── API ───────────────────────────────────────────────────
-  static const String defaultApiBase = 'http://10.41.207.173:8000';
+  static const String defaultApiBase = 'https://vitalsync-backend-production-0418.up.railway.app';
   // API keys — provide via --dart-define at build time
   // e.g.: flutter run --dart-define=GEMINI_API_KEY=your_key
   static const String geminiApiKey = String.fromEnvironment(

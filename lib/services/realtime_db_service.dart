@@ -15,7 +15,7 @@ class RealtimeDbService {
   final String _baseUrl = AppConstants.defaultApiBase;
 
   // How often to poll MongoDB for latest reading
-  static const Duration _pollInterval = Duration(seconds: 3);
+  static const Duration _pollInterval = Duration(seconds: 2);
 
   // ─── Auth Header ──────────────────────────────────────────
   Future<Map<String, String>> _headers() async {

@@ -601,48 +601,135 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildVitalsGrid(VitalsProvider vitals) {
-    return GridView.count(
-      crossAxisCount: 2,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 1.15,
+    return Column(
       children: [
-        VitalCard(
-          title: 'Heart Rate',
-          value: vitals.heartRate.toStringAsFixed(0),
-          unit: 'BPM',
-          icon: Icons.favorite_rounded,
-          color: AppTheme.heartRateColor,
-          status: vitals.hrStatus,
+        GridView.count(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 1.15,
+          children: [
+            VitalCard(
+              title: 'Heart Rate',
+              value: vitals.heartRate.toStringAsFixed(0),
+              unit: 'BPM',
+              icon: Icons.favorite_rounded,
+              color: AppTheme.heartRateColor,
+              status: vitals.hrStatus,
+            ),
+            VitalCard(
+              title: 'SpO2',
+              value: vitals.spo2.toStringAsFixed(0),
+              unit: '%',
+              icon: Icons.water_drop_rounded,
+              color: AppTheme.spo2Color,
+              status: vitals.spo2Status,
+            ),
+            VitalCard(
+              title: 'Temperature',
+              value: vitals.temperature.toStringAsFixed(1),
+              unit: '°C',
+              icon: Icons.thermostat_rounded,
+              color: AppTheme.temperatureColor,
+              status: vitals.tempStatus,
+            ),
+            VitalCard(
+              title: 'Blood Pressure',
+              value:
+                  '${vitals.systolic.toStringAsFixed(0)}/${vitals.diastolic.toStringAsFixed(0)}',
+              unit: 'mmHg',
+              icon: Icons.speed_rounded,
+              color: AppTheme.bpColor,
+              status: vitals.bpStatus,
+            ),
+          ],
         ),
-        VitalCard(
-          title: 'SpO2',
-          value: vitals.spo2.toStringAsFixed(0),
-          unit: '%',
-          icon: Icons.water_drop_rounded,
-          color: AppTheme.spo2Color,
-          status: vitals.spo2Status,
-        ),
-        VitalCard(
-          title: 'Temperature',
-          value: vitals.temperature.toStringAsFixed(1),
-          unit: '°C',
-          icon: Icons.thermostat_rounded,
-          color: AppTheme.temperatureColor,
-          status: vitals.tempStatus,
-        ),
-        VitalCard(
-          title: 'Blood Pressure',
-          value:
-              '${vitals.systolic.toStringAsFixed(0)}/${vitals.diastolic.toStringAsFixed(0)}',
-          unit: 'mmHg',
-          icon: Icons.speed_rounded,
-          color: AppTheme.bpColor,
-          status: vitals.bpStatus,
-        ),
+        const SizedBox(height: 12),
+        _buildFallDetectionCard(vitals),
       ],
+    );
+  }
+
+  Widget _buildFallDetectionCard(VitalsProvider vitals) {
+    final bool isFall = vitals.fallDetected;
+    
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.card,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+        border: Border.all(
+          color: (isFall ? AppTheme.danger : AppTheme.accent).withValues(alpha: 0.3),
+          width: 1,
+        ),
+        boxShadow: isFall ? [
+          BoxShadow(
+            color: AppTheme.danger.withValues(alpha: 0.2),
+            blurRadius: 12,
+            spreadRadius: 2,
+          )
+        ] : [],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: (isFall ? AppTheme.danger : AppTheme.accent).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isFall ? Icons.warning_amber_rounded : Icons.accessibility_new_rounded,
+              color: isFall ? AppTheme.danger : AppTheme.accent,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Fall Detection (MPU6050)',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isFall ? 'FALL DETECTED' : 'Active & Monitoring',
+                  style: TextStyle(
+                    color: isFall ? AppTheme.danger : AppTheme.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!isFall)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.success.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Normal',
+                style: TextStyle(
+                  color: AppTheme.success,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

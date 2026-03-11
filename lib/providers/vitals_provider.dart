@@ -127,27 +127,35 @@ class VitalsProvider extends ChangeNotifier {
   }
 
   // ─── Vital Status Helpers ────────────────────────────────
-  String get hrStatus => _getStatus(
-    heartRate,
-    low: AppConstants.hrLow,
-    high: AppConstants.hrHigh,
-    critical: AppConstants.hrCritical,
-  );
+  String get hrStatus {
+    if (heartRate <= 0) return 'N/A';
+    return _getStatus(
+      heartRate,
+      low: AppConstants.hrLow,
+      high: AppConstants.hrHigh,
+      critical: AppConstants.hrCritical,
+    );
+  }
 
   String get spo2Status {
+    if (spo2 <= 0) return 'N/A';
     if (spo2 < AppConstants.spo2Critical) return 'Critical';
     if (spo2 < AppConstants.spo2Low) return 'Low';
     return 'Normal';
   }
 
-  String get tempStatus => _getStatus(
-    temperature,
-    low: AppConstants.tempLow,
-    high: AppConstants.tempHigh,
-    critical: AppConstants.tempCritical,
-  );
+  String get tempStatus {
+    if (temperature <= 0) return 'N/A';
+    return _getStatus(
+      temperature,
+      low: AppConstants.tempLow,
+      high: AppConstants.tempHigh,
+      critical: AppConstants.tempCritical,
+    );
+  }
 
   String get bpStatus {
+    if (systolic <= 0 || diastolic <= 0) return 'N/A';
     if (systolic > 180 || diastolic > 120) return 'Critical';
     if (systolic > 140 || diastolic > 90) return 'High';
     if (systolic < 90 || diastolic < 60) return 'Low';
@@ -181,6 +189,7 @@ class VitalsProvider extends ChangeNotifier {
   DateTime? _lastRtdbUpdate;
   bool _isLive = false;
   String _patientId = 'demo-user';
+  bool _lastFallDetectionState = false; // State tracker to prevent infinite SOS loops
 
   static const int _staleThresholdSecs = 6; // Switch to sim if no data for 6s
   static const int _simIntervalMs = 2000; // Simulation tick every 2s
@@ -402,9 +411,12 @@ class VitalsProvider extends ChangeNotifier {
     }
 
     if (_currentReading.fallDetected) {
-      _addAlert('ALERT_FALL', 'Fall detected! Are you okay?', 'critical', 0);
-      _fallSosTriggered = true;
+      if (!_lastFallDetectionState) {
+        _addAlert('ALERT_FALL', 'Fall detected! Are you okay?', 'critical', 0);
+        _fallSosTriggered = true;
+      }
     }
+    _lastFallDetectionState = _currentReading.fallDetected;
   }
 
   void _addAlert(String code, String message, String severity, double value) {

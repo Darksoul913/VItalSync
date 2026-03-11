@@ -626,7 +626,7 @@ async def _check_thresholds(reading: VitalReading) -> list:
         )
         generated.append(alert)
 
-    if reading.spo2 < THRESHOLDS["spo2_critical"]:
+    if reading.spo2 > 0 and reading.spo2 < THRESHOLDS["spo2_critical"]:
         alert = await _create_alert(
             reading.patient_id,
             "ALERT_SPO2_LOW",

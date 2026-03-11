@@ -1,82 +1,74 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
+# macOS
 .DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
-.metadata
+.AppleDouble
+.LSOverride
+Icon
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
+# IDE / Editor
+.vscode/
 .idea/
+*.swp
+*.swo
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-/coverage/
-pubspec.lock
-
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-# Node / Web build artifacts
-node_modules/
-dist/
-package-lock.json
-
-# Python
+# Virtual Environments & Python
+.venv/
+venv/
+env/
 __pycache__/
 *.pyc
-backend/__pycache__/
-backend/*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
 
-# Environment & Secrets
+# Node.js (Just in case)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Flutter / Dart
+# Refer to VItalSync/.gitignore for specific paths, but we ignore general ones here too
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+flutter_export_environment.sh
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# C / C++ / Arduino
+*.elf
+*.hex
+*.bin
+*.eep
+*.o
+*.obj
+*.out
+*.a
+*.lib
+
+# Sensitive Files & Credentials
 .env
-*.env
-backend/.env
-lib/firebase_options.dart
-backend/serviceAccountKey.json
-android/app/google-services.json
-ios/Runner/GoogleService-Info.plist
+.env.*
+*.pem
+*.key
+serviceAccountKey.json
 
-# Temp / scratch files
-analyze_output.txt
-analyze_utf8.txt
-analyze_err.txt
-gods_plan_text.txt
-vitalsync_overview_text.txt
-vitalsync_text.txt
-model_info.txt
-extract_pdfs.py
-inspect_model.py
+# Compressed artifacts
+*.zip
+*.tar
+*.tar.gz
+*.rar
 
-# ML model binaries
-*.tflite
+# Specific project files
+MAX_AD_MPU_32.zip
